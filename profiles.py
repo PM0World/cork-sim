@@ -1,75 +1,85 @@
 # profiles.py ───────────────────────────────────────────────
 """
-High-level participant profiles → ready Agent objects.
-Capital is injected after instantiation so one agent = one profile.
+Cork-aligned participant categories:
+
+• Yield Seeker (LP)  – seeks staking & LP yield
+• Hedge Fund         – buys DS for downside hedge
+• Arbitrage Desk     – redemption / repurchase / CT-short
+
+Each create_* function returns ONE agent.  The UI lets user size each
+category in ETH; the runner deposits that ETH in the agent's wallet.
 """
 
 from agents import (
+    lst_maximalist,
+    lv_depositor,
     ds_long_term,
-    ds_speculation,
+    redemption_arbitrage,
+    repurchase_arbitrage,
+    ct_speculation,
     looping,
 )
 
-# Earn vault appetite → LoopingAgent params
-EARN_APPETITES = {
-    "Passive": dict(loop_count=0, max_ltv=0.0),
-    "Moderate": dict(loop_count=2, max_ltv=0.60),
-    "Max": dict(loop_count=5, max_ltv=0.85),
-}
-
-def cautious_fund(token: str):
-    return [
-        ds_long_term.DSLongTermAgent(
-            token_symbol=token,
-            buying_pressure=0.2,
-            name="Cautious Fund",
-        )
-    ]
-
-def yield_seeker(token: str):
-    return [
-        ds_speculation.DSShortTermAgent(
-            token_symbol=token,
-            threshold=0.03,
-            name="Yield Seeker",
-        )
-    ]
-
-def leverage_whale(token: str):
-    # whale uses highest LTV looping
-    return [
-        looping.LoopingAgent(
-            token_symbol=token,
-            initial_borrow_rate=0.001,
-            borrow_rate_changes={},
-            max_ltv=0.85,
-            name="Leverage Whale",
-        )
-    ]
-
-PROFILE_FACTORIES = {
-    "Cautious Fund": cautious_fund,
-    "Yield Seeker": yield_seeker,
-    "Max Leveraged Whale": leverage_whale,
-}
+# ------------------------------------------------------------------ #
+# Safe looping variant: skips DS buy if vault has no liquidity
+class SafeLoopingAgent(looping.LoopingAgent):
+    def on_block_mined(self, block_number: int):
+        try:
+            super().on_block_mined(block_number)
+        except ValueError as e:
+            if "Not enough liquidity to buy DS" in str(e):
+                # graceful skip
+                self.log_action("Skipped DS buy – vault empty")
+            else:
+                raise
 
 # ------------------------------------------------------------------ #
-def create_profile(profile_name: str, token: str, capital_eth: float):
-    """Return one agent with the requested ETH capital."""
-    agent = PROFILE_FACTORIES[profile_name](token)[0]
-    agent.wallet.deposit_eth(capital_eth)
-    return [agent]
-
-def create_earn_vault(token: str, appetite: str, capital_eth: float):
-    """Return a single LoopingAgent matching the Earn appetite."""
-    cfg = EARN_APPETITES[appetite]
-    ag = looping.LoopingAgent(
+def create_yield_seeker(token: str, capital_eth: float):
+    """LP + moderate looping."""
+    agent = SafeLoopingAgent(
         token_symbol=token,
         initial_borrow_rate=0.001,
         borrow_rate_changes={},
-        max_ltv=cfg["max_ltv"],
-        name=f"Earn ({appetite})",
+        max_ltv=0.60,
+        name="Yield Seeker",
     )
-    ag.wallet.deposit_eth(capital_eth)
-    return [ag]
+    agent.wallet.deposit_eth(capital_eth)
+    return [agent]
+
+
+def create_hedge_fund(token: str, capital_eth: float):
+    agent = ds_long_term.DSLongTermAgent(
+        token_symbol=token,
+        buying_pressure=0.3,
+        name="Hedge Fund",
+    )
+    agent.wallet.deposit_eth(capital_eth)
+    return [agent]
+
+
+def create_arb_desk(token: str, capital_eth: float):
+    """Bundle three arbitrage strategies into one desk."""
+    arb1 = redemption_arbitrage.RedemptionArbitrageAgent(
+        token_symbol=token, name="Redemption Arb"
+    )
+    arb2 = repurchase_arbitrage.RepurchaseArbitrageAgent(
+        token_symbol=token, name="Repurchase Arb"
+    )
+    arb3 = ct_speculation.CTShortTermAgent(
+        token_symbol=token, buying_pressure=8, name="CT Short"
+    )
+    for ag in (arb1, arb2, arb3):
+        ag.wallet.deposit_eth(capital_eth / 3)
+    return [arb1, arb2, arb3]
+
+
+PROFILE_CREATORS = {
+    "Yield Seeker (LP)": create_yield_seeker,
+    "Hedge Fund": create_hedge_fund,
+    "Arbitrage Desk": create_arb_desk,
+}
+
+# helper used by runner ------------------------------------------------
+def make_agents(profile_name: str, token: str, capital_eth: float):
+    return PROFILE_CREATORS[profile_name](token, capital_eth)
 # ───────────────────────────────────────────────────────────
