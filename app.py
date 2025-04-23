@@ -4,84 +4,96 @@ import matplotlib.pyplot as plt
 import altair as alt
 from runner import run_simulation
 
-# ── Layout & inputs ───────────────────────────────────────────
 st.set_page_config(page_title="Cork Depeg Simulator", layout="wide")
-st.title("🧮  Cork Protocol – Depeg Scenario Simulator")
+st.title("🧮 Cork Protocol – Scenario Simulator")
 
+# ── Scenario & depeg ───────────────────────────────────────
 scenario = st.selectbox(
-    "Scenario Preset",
-    ["Flash Crash", "Liquidity Drain"],
-    index=0,
+    "Scenario preset",
+    ["Minor Liquidity Shock", "Moderate Depeg Pressure", "Severe Depeg Stress"],
 )
+depeg_pct = st.slider("Maximum depeg (%)", 1, 50, 10) / 100.0
 
-depeg_pct = st.slider("Max depeg (%)", 1, 50, 10) / 100.0
+# ── Earn appetite ──────────────────────────────────────────
+earn_appetite = st.radio(
+    "Earn vault appetite",
+    ["Passive", "Moderate", "Max"],
+    help="Passive = no leverage, Max = highest LTV looping",
+)
+earn_capital = st.number_input("Earn capital (ETH)", 0.0, 50_000.0, 5_000.0, step=500.0)
 
-st.subheader("Agent Mix")
-col1, col2, col3 = st.columns(3)
-profiles = {
-    "Cautious Fund": col1.number_input("Cautious Fund (count)", 0, 10, 1),
-    "Yield Seeker":  col2.number_input("Yield Seeker (count)", 0, 10, 2),
-    "Max Leveraged Whale": col3.number_input("Whales (count)", 0, 5, 1),
-}
-# strip zeros
-profiles = {k: v for k, v in profiles.items() if v > 0}
+# ── Other participants: capital sliders ────────────────────
+st.subheader("Market participants (capital in ETH)")
+c1, c2, c3 = st.columns(3)
+cap_cf   = c1.number_input("Cautious Fund",        0.0, 20_000.0, 500.0, step=100.0)
+cap_ys   = c2.number_input("Yield Seeker",         0.0, 20_000.0, 3_000.0, step=100.0)
+cap_whale= c3.number_input("Max Leveraged Whale",  0.0, 50_000.0, 10_000.0, step=1_000.0)
+profile_capital = {k:v for k,v in {
+    "Cautious Fund":cap_cf,
+    "Yield Seeker":cap_ys,
+    "Max Leveraged Whale":cap_whale}.items() if v>0}
 
-st.subheader("Market Conditions")
+# ── Market conditions ──────────────────────────────────────
+st.subheader("Market conditions")
 token      = st.text_input("Token symbol", "stETH")
-amm_eth    = st.number_input("AMM ETH Liquidity",   1_000.0, value=1_000_000.0)
-amm_token  = st.number_input("AMM Token Liquidity", 1_000.0, value=1_000_000.0)
+amm_eth    = st.number_input("AMM ETH liquidity",   1_000.0, value=1_000_000.0, step=1_000.0)
+amm_token  = st.number_input("AMM token liquidity", 1_000.0, value=1_000_000.0, step=1_000.0)
 amm_fee    = st.slider("AMM fee", 0.0, 0.1, 0.02)
-lst_yield  = st.number_input("LST yield (APR %)", 0.0, 10.0, 4.0) / 100 / 365
-blocks     = st.slider("Blocks to simulate", 10, 10_000, 300)
-eth_yield  = st.number_input("ETH yield per block", 0.0, 0.01, 0.00001, format="%.6f")
+lst_apr    = st.number_input("Staking yield APR (%)", 0.0, 20.0, 4.0)
+blocks     = st.slider("Blocks to simulate", 50, 10_000, 500)
 
-if st.button("▶️  Run simulation"):
+if st.button("▶️ Run simulation"):
     cfg = dict(
         token=token,
         initial_eth=100.0,
         blocks=blocks,
-        eth_yield=eth_yield,
-        lst_yield=lst_yield,
+        eth_yield=0.00001,
+        lst_yield=lst_apr/100/365,
         amm_eth=amm_eth,
         amm_token=amm_token,
         amm_fee=amm_fee,
     )
-    res = run_simulation(scenario, depeg_pct, profiles, cfg)
-
-    # ── Results tables ─────────────────────────────
-    st.success(
-        f"Sim finished · min price "
-        f"{res['summary']['min_price']:.3f} "
-        f"({res['summary']['min_pct']:.1%} below peg), "
-        f"time under peg {res['summary']['blocks_under_peg']} blocks"
+    res = run_simulation(
+        scenario,
+        depeg_pct,
+        profile_capital,
+        earn_appetite,
+        earn_capital,
+        cfg,
     )
 
+    # ── Summary ────────────────────────────
+    min_pct = res["summary"]["min_pct"]
+    mins = res["summary"]["blocks_under_peg"]*12/60
+    st.success(
+        f"Min price {1-min_pct:.3f} (−{min_pct:.1%}); "
+        f"time under peg ≈ {mins:.1f} min"
+    )
+
+    # ── Tables ─────────────────────────────
     st.subheader("Trades")
     st.dataframe(pd.DataFrame(res["all_trades"]))
-
-    st.subheader("Agent Stats")
+    st.subheader("Agent stats")
     st.dataframe(pd.DataFrame(res["agents_stats"]))
 
-    # ── Charts ─────────────────────────────────────
-    prices = pd.DataFrame(res["tokens_stats"]).query("token == @token")
+    # ── Price chart ────────────────────────
     st.subheader(f"{token} price path")
+    df_prices = pd.DataFrame(res["tokens_stats"]).query("token==@token")
     fig, ax = plt.subplots()
-    ax.plot(prices["block"], prices["price"])
+    ax.plot(df_prices["block"], df_prices["price"])
     ax.set_xlabel("Block"); ax.set_ylabel("Price")
     st.pyplot(fig)
 
-    st.subheader("Final wallet value per agent")
-    final = (
+    # ── Wallet bar chart ───────────────────
+    final_bal = (
         pd.DataFrame(res["agents_stats"])
-          .groupby("agent")["wallet_face_value"]
-          .last().reset_index()
-    )
-    chart = alt.Chart(final).mark_bar().encode(
+          .groupby("agent")["wallet_face_value"].last().reset_index())
+    chart = alt.Chart(final_bal).mark_bar().encode(
         x="agent:N", y="wallet_face_value:Q"
     ).properties(width=600, height=350)
     st.altair_chart(chart, use_container_width=True)
 
-    # ── Downloads ──────────────────────────────────
+    # ── Downloads ──────────────────────────
     st.download_button(
         "Download trades CSV",
         pd.DataFrame(res["all_trades"]).to_csv(index=False),
