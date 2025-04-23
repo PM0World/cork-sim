@@ -2,217 +2,93 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import altair as alt
-from pathlib import Path
-from main import main as run_sim
+from runner import run_simulation
 
-from agents import (
-    ds_speculation,
-    ct_speculation,
-    ds_long_term,
-    ct_long_term,
-    looping,
-    redemption_arbitrage,
-    repurchase_arbitrage,
-    lst_maximalist,
-    insurer,
-    lv_depositor,
+# ── Layout & inputs ───────────────────────────────────────────
+st.set_page_config(page_title="Cork Depeg Simulator", layout="wide")
+st.title("🧮  Cork Protocol – Depeg Scenario Simulator")
+
+scenario = st.selectbox(
+    "Scenario Preset",
+    ["Flash Crash", "Liquidity Drain"],
+    index=0,
 )
 
-# ──────────────────────────────────────────────────────────────────────
-# Helper: construct agent instances dynamically
-# ──────────────────────────────────────────────────────────────────────
-def build_agent(name, params, token):
-    mapping = {
-        "DS Short Term": lambda p: ds_speculation.DSShortTermAgent(
-            name=name, token_symbol=token, threshold=p.get("threshold", 0.01)
-        ),
-        "CT Short Term": lambda p: ct_speculation.CTShortTermAgent(
-            name=name, token_symbol=token, buying_pressure=p.get("buying_pressure", 10)
-        ),
-        "DS Long Term": lambda p: ds_long_term.DSLongTermAgent(
-            name=name, token_symbol=token, buying_pressure=p.get("buying_pressure", 1)
-        ),
-        "CT Long Term": lambda p: ct_long_term.CTLongTermAgent(
-            name=name, token_symbol=token, percentage_threshold=p.get("pct_thr", 0.01)
-        ),
-        "Looping Agent": lambda p: looping.LoopingAgent(
-            name=name,
-            token_symbol=token,
-            initial_borrow_rate=p.get("init_rate", 0.001),
-            borrow_rate_changes={},
-            max_ltv=p.get("max_ltv", 0.7),
-        ),
-        "Redemption Arb": lambda p: redemption_arbitrage.RedemptionArbitrageAgent(
-            name=name, token_symbol=token
-        ),
-        "Repurchase Arb": lambda p: repurchase_arbitrage.RepurchaseArbitrageAgent(
-            name=name, token_symbol=token
-        ),
-        "Lst Maximalist": lambda p: lst_maximalist.LstMaximalist(token),
-        "Insurer":        lambda p: insurer.Insurer(token),
-        "LV Depositor":   lambda p: lv_depositor.LVDepositorAgent(
-                                token, expected_apy=p.get("expected_apy", 0.05)
-                        ),
-    }
-    return mapping[name](params)
+depeg_pct = st.slider("Max depeg (%)", 1, 50, 10) / 100.0
 
-# ──────────────────────────────────────────────────────────────────────
-# Streamlit layout
-# ──────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="Cork Simulator", layout="wide")
-st.title("🧮 Cork Protocol Trading Simulator")
+st.subheader("Agent Mix")
+col1, col2, col3 = st.columns(3)
+profiles = {
+    "Cautious Fund": col1.number_input("Cautious Fund (count)", 0, 10, 1),
+    "Yield Seeker":  col2.number_input("Yield Seeker (count)", 0, 10, 2),
+    "Max Leveraged Whale": col3.number_input("Whales (count)", 0, 5, 1),
+}
+# strip zeros
+profiles = {k: v for k, v in profiles.items() if v > 0}
 
-# ── Step 1: core params ──────────────────────────────────────────────
-with st.sidebar.expander("Step 1 · Core simulation", expanded=True):
-    num_blocks = st.slider("Blocks to mine", 10, 10_000, 300)
-    init_eth   = st.number_input("Initial ETH balance", 1.0, value=100.0)
-    token_name = st.text_input("TOKEN_NAME", "stETH")
-    events_file = st.file_uploader("Custom events.json (optional)")
+st.subheader("Market Conditions")
+token      = st.text_input("Token symbol", "stETH")
+amm_eth    = st.number_input("AMM ETH Liquidity",   1_000.0, value=1_000_000.0)
+amm_token  = st.number_input("AMM Token Liquidity", 1_000.0, value=1_000_000.0)
+amm_fee    = st.slider("AMM fee", 0.0, 0.1, 0.02)
+lst_yield  = st.number_input("LST yield (APR %)", 0.0, 10.0, 4.0) / 100 / 365
+blocks     = st.slider("Blocks to simulate", 10, 10_000, 300)
+eth_yield  = st.number_input("ETH yield per block", 0.0, 0.01, 0.00001, format="%.6f")
 
-# ── Step 2: AMM params ───────────────────────────────────────────────
-with st.sidebar.expander("Step 2 · AMM parameters", expanded=False):
-    reserve_eth   = st.number_input("AMM reserve ETH",   1_000.0, value=1_000_000.0)
-    reserve_token = st.number_input("AMM reserve TOKEN", 1_000.0, value=1_000_000.0)
-    amm_fee       = st.slider("AMM fee", 0.0, 0.1, 0.02)
+if st.button("▶️  Run simulation"):
+    cfg = dict(
+        token=token,
+        initial_eth=100.0,
+        blocks=blocks,
+        eth_yield=eth_yield,
+        lst_yield=lst_yield,
+        amm_eth=amm_eth,
+        amm_token=amm_token,
+        amm_fee=amm_fee,
+    )
+    res = run_simulation(scenario, depeg_pct, profiles, cfg)
 
-# ── Step 3: choose agents ────────────────────────────────────────────
-all_agent_names = [
-    "DS Short Term","CT Short Term","DS Long Term","CT Long Term",
-    "Looping Agent","Redemption Arb","Repurchase Arb",
-    "Lst Maximalist","Insurer","LV Depositor"
-]
-chosen = st.sidebar.multiselect(
-    "Step 3 · Choose agents", all_agent_names,
-    default=[n for n in all_agent_names if n!="Looping Agent"]
-)
-
-# per-agent parameter widgets
-agent_params = {}
-for name in chosen:
-    with st.sidebar.expander(f"{name} settings"):
-        if name == "DS Short Term":
-            agent_params[name] = {
-                "threshold": st.number_input("threshold", 0.0, 0.5, 0.01, key=name)
-            }
-        elif name == "CT Short Term":
-            agent_params[name] = {
-                "buying_pressure": st.number_input("buying pressure", 1, 100, 10, key=name)
-            }
-        elif name == "DS Long Term":
-            agent_params[name] = {
-                "buying_pressure": st.number_input("buying pressure", 1, 10, 1, key=name)
-            }
-        elif name == "CT Long Term":
-            agent_params[name] = {
-                "pct_thr": st.number_input("% threshold", 0.0, 0.5, 0.01, key=name)
-            }
-        elif name == "Looping Agent":
-            agent_params[name] = {
-                "init_rate": st.number_input("initial borrow rate", 0.0, 0.01, 0.001, key=name),
-                "max_ltv":   st.slider("max LTV", 0.1, 0.9, 0.7, key=name),
-            }
-        elif name == "LV Depositor":
-            agent_params[name] = {
-                "expected_apy": st.number_input("expected APY", 0.0, 0.20, 0.05, key=name)
-            }
-        else:
-            agent_params[name] = {}
-
-# ── Step 4: advanced ────────────────────────────────────────────────
-with st.sidebar.expander("Step 4 · Advanced / Monte-Carlo", expanded=False):
-    n_sims     = st.selectbox("How many simulations?", list(range(1,11)), index=0)
-    eth_yield  = st.number_input("initial_eth_yield_per_block", 0.0, 0.01, 0.00001, format="%.6f")
-    psm_expiry = st.number_input("PSM expiry block (0 = same as num_blocks)", 0, num_blocks, num_blocks)
-
-run = st.sidebar.button("▶️  Run simulation")
-
-# ──────────────────────────────────────────────────────────────────────
-# Run simulation
-# ──────────────────────────────────────────────────────────────────────
-if run:
-    # ---- guarantee a valid events file path ----
-    if events_file:
-        tmp = Path("/tmp/upload.json")
-        tmp.write_bytes(events_file.getbuffer())
-        events_path = str(tmp)
-    else:
-        fallback = Path("events.json")
-        if not fallback.exists():
-            fallback.write_text("[]")
-        events_path = "events.json"
-
-    agents = [
-        build_agent(name, agent_params.get(name, {}), token_name)
-        for name in chosen
-    ]
-
-    res = run_sim(
-        num_blocks=num_blocks,
-        initial_eth_balance=init_eth,
-        agents_override=agents,
-        amm_kwargs={"reserve_eth": reserve_eth, "reserve_token": reserve_token, "fee": amm_fee,},
-        initial_eth_yield_per_block=eth_yield,
-        psm_expiry_after_block=psm_expiry or num_blocks,
-        events_path=events_path,
+    # ── Results tables ─────────────────────────────
+    st.success(
+        f"Sim finished · min price "
+        f"{res['summary']['min_price']:.3f} "
+        f"({res['summary']['min_pct']:.1%} below peg), "
+        f"time under peg {res['summary']['blocks_under_peg']} blocks"
     )
 
-    st.success(f"Completed {res['final_block']} blocks · {len(res['all_trades'])} trades")
-
-    # --- Tables ------------------------------------------------------
     st.subheader("Trades")
-    st.dataframe(res["all_trades"])
-    st.subheader("Agent stats")
+    st.dataframe(pd.DataFrame(res["all_trades"]))
+
+    st.subheader("Agent Stats")
     st.dataframe(pd.DataFrame(res["agents_stats"]))
 
-    # ────────────────────────────────────────────────────────────────
-    # VISUALS
-    # ────────────────────────────────────────────────────────────────
-    # 1) Price path
-    st.subheader(f"{token_name} price over blocks")
-    price_df = pd.DataFrame(res["tokens_stats"]).query("token == @token_name")
+    # ── Charts ─────────────────────────────────────
+    prices = pd.DataFrame(res["tokens_stats"]).query("token == @token")
+    st.subheader(f"{token} price path")
     fig, ax = plt.subplots()
-    ax.plot(price_df["block"], price_df["price"])
-    ax.set_xlabel("Block"); ax.set_ylabel(f"{token_name} price (ETH)")
+    ax.plot(prices["block"], prices["price"])
+    ax.set_xlabel("Block"); ax.set_ylabel("Price")
     st.pyplot(fig)
 
-    # 2) Final wallet bar chart
-    st.subheader("Final wallet face value (ETH)")
-    final_bal = (
+    st.subheader("Final wallet value per agent")
+    final = (
         pd.DataFrame(res["agents_stats"])
           .groupby("agent")["wallet_face_value"]
           .last().reset_index()
     )
-    bar = (
-        alt.Chart(final_bal)
-           .mark_bar()
-           .encode(x="agent:N", y="wallet_face_value:Q")
-           .properties(width=600, height=350)
-    )
-    st.altair_chart(bar, use_container_width=True)
+    chart = alt.Chart(final).mark_bar().encode(
+        x="agent:N", y="wallet_face_value:Q"
+    ).properties(width=600, height=350)
+    st.altair_chart(chart, use_container_width=True)
 
-    # 3) Cumulative trade volume
-    st.subheader("Cumulative trade volume by agent")
-    trades_df = pd.DataFrame(res["all_trades"])
-    cum = (trades_df.groupby(["agent","action"])["volume"]
-                  .sum().reset_index())
-    vol_chart = (
-        alt.Chart(cum)
-           .mark_bar()
-           .encode(x="agent:N", y="volume:Q", color="action:N")
-           .properties(width=600, height=350)
-    )
-    st.altair_chart(vol_chart, use_container_width=True)
-
-    # 4) Download buttons
+    # ── Downloads ──────────────────────────────────
     st.download_button(
         "Download trades CSV",
-        trades_df.to_csv(index=False),
+        pd.DataFrame(res["all_trades"]).to_csv(index=False),
         file_name="trades.csv",
-        mime="text/csv",
     )
     st.download_button(
-        "Download agents stats CSV",
+        "Download agent stats CSV",
         pd.DataFrame(res["agents_stats"]).to_csv(index=False),
         file_name="agents_stats.csv",
-        mime="text/csv",
     )
