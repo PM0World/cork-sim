@@ -6,26 +6,22 @@ from simulator.agent import Agent
 
 class LstMaximalist(Agent):
 
-    def __init__(self, lst_symbol: str):
-        super().__init__(f'LST Maximalist for {lst_symbol}')
+    def __init__(self, lst_symbol: str, name: str = None):
+        agent_name = name if name else f'LST Maximalist for {lst_symbol}'
+        super().__init__(agent_name)
         self.lst_symbol = lst_symbol
 
     def on_block_mined(self, block_number: int):
         amm = self.blockchain.get_amm(self.lst_symbol)
 
-        # Introduce randomness in the amount of ETH used for the swap (between 0.5x and 1.5x of the LST price)
         lst_price_in_eth = amm.price_of_one_token_in_eth()
 
         try:
-            # Attempt to swap ETH for LST using the random ETH amount
             amm.swap_eth_for_token(self.wallet, lst_price_in_eth)
             self.log_action(f'bought one {self.lst_symbol} with {lst_price_in_eth:.4f} ETH')
 
-            # and add more liquidity to the amm
             amm.add_liquidity(self.wallet, 1, lst_price_in_eth)
             self.log_action(f'added liquidity to ETH/{self.lst_symbol} with 1 ETH and {lst_price_in_eth:.4f} LST')
 
         except ValueError:
             self.log_action(f'no more ETH, would ❤️ to buy more.')
-
-

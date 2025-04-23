@@ -2,9 +2,10 @@ from simulator.agent import Agent
 
 class DSBuyerAgent(Agent):
 
-    def __init__(self, token_symbol: str):
+    def __init__(self, token_symbol: str, name: str = None):
+        agent_name = name if name else f'DSBuyerAgent for {token_symbol}'
+        super().__init__(agent_name)
         self.token_symbol = token_symbol
-        super().__init__(f'DSBuyerAgent for {token_symbol}')
 
     def on_block_mined(self, block_number: int):
         vault = self.blockchain.get_vault(self.token_symbol)
