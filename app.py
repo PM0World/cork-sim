@@ -43,9 +43,10 @@ def build_agent(name, params, token):
         "Repurchase Arb": lambda p: repurchase_arbitrage.RepurchaseArbitrageAgent(
             name=name, token_symbol=token
         ),
+        # --- FIXED: no name= kwarg, only token_symbol ---
         "Lst Maximalist": lambda p: lst_maximalist.LstMaximalist(
-            name=name, token_symbol=token
-        ),  # ← fixed
+            token_symbol=token
+        ),
         "Insurer": lambda p: insurer.Insurer(name=name, token_symbol=token),
         "LV Depositor": lambda p: lv_depositor.LVDepositorAgent(
             name=name, token_symbol=token
