@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from pathlib import Path
 from main import main as run_sim
 
 from agents import (
@@ -94,9 +95,7 @@ for name in chosen:
     with st.sidebar.expander(f"{name} settings"):
         if name == "DS Short Term":
             agent_params[name] = {
-                "threshold": st.number_input(
-                    "threshold", 0.0, 0.5, 0.01, key=name
-                )
+                "threshold": st.number_input("threshold", 0.0, 0.5, 0.01, key=name)
             }
         elif name == "CT Short Term":
             agent_params[name] = {
@@ -146,6 +145,18 @@ run = st.sidebar.button("▶️  Run simulation")
 
 # ---------- run logic ----------
 if run:
+    # ---- ensure a real events file path ----
+    if events_file is not None:
+        tmp_path = Path("/tmp/upload.json")
+        tmp_path.write_bytes(events_file.getbuffer())
+        events_path = str(tmp_path)
+    else:
+        # guarantee the fallback file exists even in cloud
+        fallback = Path("events.json")
+        if not fallback.exists():
+            fallback.write_text("[]")
+        events_path = "events.json"
+
     agents = [
         build_agent(name, agent_params.get(name, {}), token_name)
         for name in chosen
@@ -162,8 +173,7 @@ if run:
         },
         initial_eth_yield_per_block=eth_yield,
         psm_expiry_after_block=psm_expiry or num_blocks,
-        # -------- always pass a real file path -------------
-        events_path="events.json" if events_file is None else "/tmp/upload.json",
+        events_path=events_path,   # ← always valid
     )
 
     st.success(
