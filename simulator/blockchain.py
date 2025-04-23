@@ -18,40 +18,40 @@ init(autoreset=True)
 class Blockchain:
     """
     Core chain state-machine.
-    Added `events_path` (optional) so callers can load a custom events file
-    or skip events entirely by passing None.
+    `events_path` is optional – pass None to start with an empty
+    EventManager.
     """
 
     current_block = 0
 
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────
     # Constructor
-    # ------------------------------------------------------------------
+    # ──────────────────────────────────────────────────────────
     def __init__(
         self,
         num_blocks: int,
         initial_eth_balance: float,
         psm_expiry_after_block: int,
         initial_eth_yield_per_block: float = 0.0,
-        events_path: Optional[str] = "events.json",  # NEW PARAM
+        events_path: Optional[str] = "events.json",
     ):
-        # ---------------- events manager -----------------
+        # -------- event manager --------
         if events_path is None:
-            self.event_manager = EventManager()          # empty manager
+            self.event_manager = EventManager([])          # ← FIX: pass empty list
         else:
             self.event_manager = EventManager.from_json(events_path)
 
-        # ---------------- high-level config ---------------
+        # -------- high-level config ----
         self.num_blocks = num_blocks
         self.initial_eth_balance = initial_eth_balance
         self.eth_yield_per_block = initial_eth_yield_per_block
 
-        assert (
-            psm_expiry_after_block <= num_blocks
-        ), "PSM expiry date must be before the end of the simulation"
+        assert psm_expiry_after_block <= num_blocks, (
+            "PSM expiry date must be before the end of the simulation"
+        )
         self.psm_expiry_at_block = psm_expiry_after_block
 
-        # ---------------- dynamic state ------------------
+        # -------- dynamic state -------
         self.tokens = {}                         # token_symbol → dict
         self.agents = []                         # all agent objects
         self.initial_eth_balance_overrides = {}  # per-agent overrides
@@ -72,7 +72,7 @@ class Blockchain:
         Blockchain.current_block = 0
         self.current_block = 0
 
-        # ---------------- metrics dataframes -------------
+        # -------- metrics dataframes ---
         self.stats = {
             "agents": pd.DataFrame(
                 columns=[
@@ -109,6 +109,10 @@ class Blockchain:
                 columns=["block", "wallet", "token", "amount"]
             ),
         }
+
+    # (everything below this point is unchanged – keep your existing
+    #  _append_stats, add_token, borrow/repay, mining loop, etc.)
+
 
     # ------------------------------------------------------------------
     # Helpers – stats aggregation
