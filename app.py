@@ -43,11 +43,10 @@ def build_agent(name, params, token):
         "Repurchase Arb": lambda p: repurchase_arbitrage.RepurchaseArbitrageAgent(
             name=name, token_symbol=token
         ),
-        # --- FIXED: positional arg only, no keyword ---
         "Lst Maximalist": lambda p: lst_maximalist.LstMaximalist(token),
-        "Insurer": lambda p: insurer.Insurer(name=name, token_symbol=token),
-        "LV Depositor": lambda p: lv_depositor.LVDepositorAgent(
-            name=name, token_symbol=token
+        "Insurer": lambda p: insurer.Insurer(token_symbol=token),  # fixed
+        "LV Depositor": lambda p: lv_depositor.LVDepositorAgent(    # fixed
+            token_symbol=token, expected_apy=p.get("expected_apy", 0.05)
         ),
     }
     return mapping[name](params)
@@ -67,9 +66,7 @@ with st.sidebar.expander("Step 1 · Core simulation", expanded=True):
 # ---- Step 2 AMM ----
 with st.sidebar.expander("Step 2 · AMM parameters", expanded=False):
     reserve_eth = st.number_input("AMM reserve ETH", 1000.0, value=1_000_000.0)
-    reserve_token = st.number_input(
-        "AMM reserve TOKEN", 1000.0, value=1_000_000.0
-    )
+    reserve_token = st.number_input("AMM reserve TOKEN", 1000.0, value=1_000_000.0)
     amm_fee = st.slider("AMM fee", 0.0, 0.1, 0.02)
 
 # ---- Step 3 agents ----
@@ -97,9 +94,7 @@ for name in chosen:
     with st.sidebar.expander(f"{name} settings"):
         if name == "DS Short Term":
             agent_params[name] = {
-                "threshold": st.number_input(
-                    "threshold", 0.0, 0.5, 0.01, key=name
-                )
+                "threshold": st.number_input("threshold", 0.0, 0.5, 0.01, key=name)
             }
         elif name == "CT Short Term":
             agent_params[name] = {
@@ -125,6 +120,12 @@ for name in chosen:
                     "initial borrow rate", 0.0, 0.01, 0.001, key=name
                 ),
                 "max_ltv": st.slider("max LTV", 0.1, 0.9, 0.7, key=name),
+            }
+        elif name == "LV Depositor":
+            agent_params[name] = {
+                "expected_apy": st.number_input(
+                    "expected APY", 0.0, 0.20, 0.05, key=name
+                )
             }
         else:
             agent_params[name] = {}
@@ -169,4 +170,5 @@ if run:
     st.dataframe(res["all_trades"])
     st.subheader("Agent Stats")
     st.dataframe(pd.DataFrame(res["agents_stats"]))
+
 
