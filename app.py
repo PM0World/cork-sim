@@ -44,9 +44,10 @@ def build_agent(name, params, token):
             name=name, token_symbol=token
         ),
         "Lst Maximalist": lambda p: lst_maximalist.LstMaximalist(token),
-        "Insurer": lambda p: insurer.Insurer(token_symbol=token),  # fixed
-        "LV Depositor": lambda p: lv_depositor.LVDepositorAgent(    # fixed
-            token_symbol=token, expected_apy=p.get("expected_apy", 0.05)
+        # ---- fixed: positional only, no keywords -----------------
+        "Insurer": lambda p: insurer.Insurer(token),
+        "LV Depositor": lambda p: lv_depositor.LVDepositorAgent(
+            token, expected_apy=p.get("expected_apy", 0.05)
         ),
     }
     return mapping[name](params)
@@ -94,7 +95,9 @@ for name in chosen:
     with st.sidebar.expander(f"{name} settings"):
         if name == "DS Short Term":
             agent_params[name] = {
-                "threshold": st.number_input("threshold", 0.0, 0.5, 0.01, key=name)
+                "threshold": st.number_input(
+                    "threshold", 0.0, 0.5, 0.01, key=name
+                )
             }
         elif name == "CT Short Term":
             agent_params[name] = {
@@ -170,5 +173,3 @@ if run:
     st.dataframe(res["all_trades"])
     st.subheader("Agent Stats")
     st.dataframe(pd.DataFrame(res["agents_stats"]))
-
-
