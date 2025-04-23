@@ -44,7 +44,6 @@ def build_agent(name, params, token):
             name=name, token_symbol=token
         ),
         "Lst Maximalist": lambda p: lst_maximalist.LstMaximalist(token),
-        # ---- fixed: positional only, no keywords -----------------
         "Insurer": lambda p: insurer.Insurer(token),
         "LV Depositor": lambda p: lv_depositor.LVDepositorAgent(
             token, expected_apy=p.get("expected_apy", 0.05)
@@ -163,7 +162,8 @@ if run:
         },
         initial_eth_yield_per_block=eth_yield,
         psm_expiry_after_block=psm_expiry or num_blocks,
-        events_path=None if events_file is None else "/tmp/upload.json",
+        # -------- always pass a real file path -------------
+        events_path="events.json" if events_file is None else "/tmp/upload.json",
     )
 
     st.success(
