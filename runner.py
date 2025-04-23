@@ -5,6 +5,7 @@ from profiles import create_profile, create_earn_vault
 from scenarios import SCENARIOS
 from analysis import summarize
 
+
 def run_simulation(
     scenario_name: str,
     depeg_pct: float,
@@ -14,15 +15,17 @@ def run_simulation(
     cfg: dict,
 ):
     """
-    profile_capital example: {"Cautious Fund":500, "Max Leveraged Whale":10000}
+    profile_capital example:
+        {"Cautious Fund": 500, "Max Leveraged Whale": 10_000}
     """
 
+    # 1. chain ----------------------------------------------------------------
     chain = Blockchain(
         num_blocks=cfg["blocks"],
         initial_eth_balance=cfg["initial_eth"],
         psm_expiry_after_block=cfg["blocks"],
         initial_eth_yield_per_block=cfg["eth_yield"],
-        events_path=None,
+        events_path=None,                      # we'll inject manually
     )
 
     token = cfg["token"]
@@ -40,19 +43,23 @@ def run_simulation(
         initial_yield_per_block=cfg["lst_yield"],
     )
 
-    # add earn vault agent
+    # 2. Earn vault agent ------------------------------------------------------
     chain.add_agents(*create_earn_vault(token, earn_appetite, earn_capital))
 
-    # add other profiles
+    # 3. other participant profiles -------------------------------------------
     for name, cap in profile_capital.items():
         chain.add_agents(*create_profile(name, token, cap))
 
-    # scenario events
-    for ev in SCENARIOS[scenario_name](depeg_pct, token):
-        chain.event_manager.add(ev)
+    # 4. scenario events -------------------------------------------------------
+    scenario_events = SCENARIOS[scenario_name](depeg_pct, token)
+    chain.event_manager.events.extend(scenario_events)
+    # keep them ordered by block just in case
+    chain.event_manager.events.sort(key=lambda ev: ev["block"])
 
+    # 5. run -------------------------------------------------------------------
     chain.start_mining(print_stats=False)
 
+    # 6. pack results ----------------------------------------------------------
     return dict(
         tokens_stats=chain.stats["tokens"],
         agents_stats=chain.stats["agents"],
