@@ -1,0 +1,537 @@
+[
+  {
+    "type": "depeg",
+    "block": 2,
+    "percentage": 0.0005,
+    "token": "stETH"
+  },
+  {
+    "type": "yield_adjustment",
+    "block": 4,
+    "percentage": 0.0010,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 5,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 6,
+    "percentage": 0.0007,
+    "token": "stETH"
+  },
+  {
+    "type": "yield_adjustment",
+    "block": 7,
+    "percentage": 0.0011,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 12,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 13,
+    "percentage": 0.0004,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 14,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 17,
+    "percentage": 0.0005,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 24,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 25,
+    "percentage": 0.0003,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 26,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 27,
+    "percentage": 0.0001,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 33,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 37,
+    "percentage": 0.0002,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 38,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 39,
+    "percentage": 0.0005,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 40,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 41,
+    "percentage": 0.0009,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 42,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 44,
+    "percentage": 0.0007,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 47,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 48,
+    "percentage": 0.0008,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 54,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 55,
+    "percentage": 0.0006,
+    "token": "stETH"
+  },
+    {
+      "type": "depeg",
+      "block": 56,
+      "percentage": 0.05,
+      "token": "stETH"
+    },
+    {
+      "type": "depeg",
+      "block": 57,
+      "percentage": 0.05,
+      "token": "stETH"
+    },
+    {
+      "type": "depeg",
+      "block": 58,
+      "percentage": 0.05,
+      "token": "stETH"
+    },
+    {
+      "type": "depeg",
+      "block": 59,
+      "percentage": 0.05,
+      "token": "stETH"
+    },
+    {
+      "type": "depeg",
+      "block": 60,
+      "percentage": 0.05,
+      "token": "stETH"
+    },
+    {
+      "type": "depeg",
+      "block": 61,
+      "percentage": 0.05,
+      "token": "stETH"
+    },
+    {
+      "type": "depeg",
+      "block": 62,
+      "percentage": 0.05,
+      "token": "stETH"
+    },
+    {
+      "type": "repeg",
+      "block": 63,
+      "token": "stETH"
+    },
+    {
+      "type": "yield_adjustment",
+      "block": 64,
+      "percentage": 0.0013,
+      "token": "stETH"
+    },
+    {
+      "type": "yield_adjustment",
+      "block": 65,
+      "percentage": 0.0015,
+      "token": "stETH"
+    },
+    {
+      "type": "yield_adjustment",
+      "block": 66,
+      "percentage": 0.0017,
+      "token": "stETH"
+    },
+    {
+      "type": "yield_adjustment",
+      "block": 67,
+      "percentage": 0.0030,
+      "token": "stETH"
+    },
+    {
+      "type": "depeg",
+      "block": 68,
+      "percentage": 0.0040,
+      "token": "stETH"
+    },
+    {
+      "type": "repeg",
+      "block": 69,
+      "token": "stETH"
+    },
+    {
+      "type": "depeg",
+      "block": 70,
+      "percentage": 0.0005,
+      "token": "stETH"
+    },
+    {
+      "type": "repeg",
+      "block": 71,
+      "token": "stETH"
+    }
+  ,  
+  {
+    "type": "repeg",
+    "block": 113,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 115,
+    "percentage": 0.0008,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 143,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 144,
+    "percentage": 0.0007,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 166,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 167,
+    "percentage": 0.0,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 170,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 172,
+    "percentage": 0.0003,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 173,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 174,
+    "percentage": 0.0004,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 175,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 176,
+    "percentage": 0.0006,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 180,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 181,
+    "percentage": 0.0003,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 187,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 188,
+    "percentage": 0.0013,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 190,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 191,
+    "percentage": 0.0003,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 193,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 194,
+    "percentage": 0.0002,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 196,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 203,
+    "percentage": 0.0003,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 212,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 213,
+    "percentage": 0.0,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 225,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 226,
+    "percentage": 0.0004,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 227,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 231,
+    "percentage": 0.0006,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 237,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 238,
+    "percentage": 0.0005,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 241,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 242,
+    "percentage": 0.0008,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 248,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 250,
+    "percentage": 0.05,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 251,
+    "percentage": 0.05,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 252,
+    "percentage": 0.05,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 253,
+    "percentage": 0.05,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 254,
+    "percentage": 0.05,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 255,
+    "percentage": 0.05,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 256,
+    "percentage": 0.05,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 257,
+    "token": "stETH"
+  },
+  {
+    "type": "yield_adjustment",
+    "block": 258,
+    "percentage": 0.0013,
+    "token": "stETH"
+  },
+  {
+    "type": "yield_adjustment",
+    "block": 259,
+    "percentage": 0.0015,
+    "token": "stETH"
+  },
+  {
+    "type": "yield_adjustment",
+    "block": 260,
+    "percentage": 0.0017,
+    "token": "stETH"
+  },
+  {
+    "type": "yield_adjustment",
+    "block": 261,
+    "percentage": 0.0030,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 262,
+    "percentage": 0.0040,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 266,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 267,
+    "percentage": 0.0005,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 268,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 269,
+    "percentage": 0.0,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 282,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 283,
+    "percentage": 0.0003,
+    "token": "stETH"
+  },
+  {
+    "type": "repeg",
+    "block": 295,
+    "token": "stETH"
+  },
+  {
+    "type": "depeg",
+    "block": 298,
+    "percentage": 0.0008,
+    "token": "stETH"
+  }
+]
