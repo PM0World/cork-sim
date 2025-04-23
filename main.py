@@ -1,3 +1,12 @@
+"""
+main.py – Cork Protocol Simulation entry point
+• Can be imported as a function `main()` by Streamlit.
+• Run directly for CLI testing: `python main.py`
+"""
+
+from typing import List, Dict, Optional
+import pandas as pd
+
 from agents.ct_long_term import CTLongTermAgent
 from agents.ct_speculation import CTShortTermAgent
 from agents.ds_long_term import DSLongTermAgent
@@ -9,114 +18,170 @@ from agents.repurchase_arbitrage import RepurchaseArbitrageAgent
 from agents.lv_depositor import LVDepositorAgent
 from agents.looping import LoopingAgent
 from simulator.blockchain import Blockchain
-from simulator.amm import UniswapV2AMM, YieldSpaceAMM
-import pandas as pd
+from simulator.amm import UniswapV2AMM
+
+# ------------------------------------------------------------------
+# Default constants (kept from the original file)
+# ------------------------------------------------------------------
+NUM_BLOCKS = 300
+INITIAL_ETH_BALANCE = 100.0
+TOKEN_NAME = "stETH"
+
+INITIAL_AGENT_TOKEN_BALANCE = 100.0
+AMM_RESERVE_ETH = 1_000_000.0
+AMM_RESERVE_TOKEN = 1_000_000.0
+AMM_FEE = 0.02
+INITIAL_YIELD_PER_BLOCK = 0.03 / 365
+
+PSM_EXPIRY_AFTER_BLOCK = NUM_BLOCKS
+INITIAL_ETH_YIELD_PER_BLOCK = 0.00001
+
+DEFAULT_AGENT_NAMES = [
+    # "LstMaximalist",
+    # "Insurer",
+    "DSShortTerm",
+    "CTShortTerm",
+    "DSLongTerm",
+    "CTLongTerm",
+    "RedemptionArbitrage",
+    "RepurchaseArbitrage",
+    # "LVDepositor",
+    # "LoopingAgent",
+]
+
+# ------------------------------------------------------------------
+# Internal helper: map agent name → instance with given params
+# ------------------------------------------------------------------
+def _build_agent(name: str, token: str, params: Dict) -> object:
+    if name == "DSShortTerm":
+        return DSShortTermAgent(
+            name="DS Short Term",
+            token_symbol=token,
+            threshold=params.get("threshold", 0.01),
+        )
+    if name == "CTShortTerm":
+        return CTShortTermAgent(
+            name="CT Short Term",
+            token_symbol=token,
+            buying_pressure=params.get("buying_pressure", 10),
+        )
+    if name == "DSLongTerm":
+        return DSLongTermAgent(
+            name="DS Long Term",
+            token_symbol=token,
+            buying_pressure=params.get("buying_pressure", 1),
+        )
+    if name == "CTLongTerm":
+        return CTLongTermAgent(
+            name="CT Long Term",
+            token_symbol=token,
+            percentage_threshold=params.get("percentage_threshold", 0.01),
+        )
+    if name == "RedemptionArbitrage":
+        return RedemptionArbitrageAgent(name="Redemption Arb", token_symbol=token)
+    if name == "RepurchaseArbitrage":
+        return RepurchaseArbitrageAgent(name="Repurchase Arb", token_symbol=token)
+    if name == "LstMaximalist":
+        return LstMaximalist(token_symbol=token)
+    if name == "Insurer":
+        return Insurer(token_symbol=token)
+    if name == "LVDepositor":
+        return LVDepositorAgent(
+            name="LV Depositor",
+            token_symbol=token,
+            expected_apy=params.get("expected_apy", 0.05),
+        )
+    if name == "LoopingAgent":
+        return LoopingAgent(
+            name="Looping Agent",
+            token_symbol=token,
+            initial_borrow_rate=params.get("initial_borrow_rate", 0.001),
+            borrow_rate_changes=params.get("borrow_rate_changes", {}),
+            max_ltv=params.get("max_ltv", 0.7),
+            lltv=params.get("lltv", 0.915),
+        )
+    raise ValueError(f"Unknown agent name '{name}'")
 
 
-# Simulation parameters
-NUM_BLOCKS = 300  # Number of blocks to simulate
-INITIAL_ETH_BALANCE = 100.0  # Initial ETH balance for each agent
-PSM_EXPIRY_AFTER_BLOCK = 300  # Block after which the Peg Stability Module (PSM) expires
+# ------------------------------------------------------------------
+# Public API
+# ------------------------------------------------------------------
+def main(
+    *,
+    num_blocks: int = NUM_BLOCKS,
+    initial_eth_balance: float = INITIAL_ETH_BALANCE,
+    token_name: str = TOKEN_NAME,
+    initial_agent_token_balance: float = INITIAL_AGENT_TOKEN_BALANCE,
+    amm_kwargs: Optional[Dict] = None,
+    initial_yield_per_block: float = INITIAL_YIELD_PER_BLOCK,
+    initial_eth_yield_per_block: float = INITIAL_ETH_YIELD_PER_BLOCK,
+    psm_expiry_after_block: Optional[int] = None,
+    agent_names: Optional[List[str]] = None,
+    agent_params: Optional[Dict[str, Dict]] = None,
+    events_path: str = "events.json",
+    agents_override: Optional[List[object]] = None,
+):
+    """
+    Run a single simulation and return a dict of Pandas DataFrames.
+    GUI or tests can override any argument.
+    """
+    amm_kwargs = amm_kwargs or {}
+    psm_expiry_after_block = psm_expiry_after_block or num_blocks
+    agent_names = agent_names or DEFAULT_AGENT_NAMES
+    agent_params = agent_params or {}
 
-# Token parameters
-TOKEN_NAME = 'stETH'  # Name of the token to simulate
-INITIAL_AGENT_TOKEN_BALANCE = 100.0  # Initial token balance for each agent
-AMM_RESERVE_ETH = 1000000.0  # Initial ETH reserve in the AMM
-AMM_RESERVE_TOKEN = 1000000.0  # Initial token reserve in the AMM
-AMM_FEE = 0.02  # Fee percentage in the AMM, 0.02 = 2%
-INITIAL_YIELD_PER_BLOCK = 0.03 / 365  # Yield per block (assuming 3% annual yield)
-PSM_REDEMPTION_FEES = 0.001  # Redemption fees for the Peg Stability Module, 0.001 = 0.1%
-PSM_REPURCHASE_FEES = 0.05  # Reurchase fees for the Peg Stability Module, 0.05 = 5%
+    # ---------------- blockchain + token -----------------
+    chain = Blockchain(
+        num_blocks=num_blocks,
+        initial_eth_balance=initial_eth_balance,
+        psm_expiry_after_block=psm_expiry_after_block,
+        initial_eth_yield_per_block=initial_eth_yield_per_block,
+        events_path=events_path,
+    )
 
+    chain.add_token(
+        token=token_name,
+        risk=0.02,
+        initial_agent_balance=initial_agent_token_balance,
+        amm=UniswapV2AMM(
+            token_symbol=token_name,
+            reserve_eth=amm_kwargs.get("reserve_eth", AMM_RESERVE_ETH),
+            reserve_token=amm_kwargs.get("reserve_token", AMM_RESERVE_TOKEN),
+            fee=amm_kwargs.get("fee", AMM_FEE),
+        ),
+        initial_yield_per_block=initial_yield_per_block,
+    )
 
-# Agents to include in the simulation
-AGENT_NAMES = [
-    #'LstMaximalist',
-    #'Insurer',
-    'DSShortTerm',
-    'CTShortTerm',
-    'DSLongTerm',
-    'CTLongTerm',
-    'RedemptionArbitrage',
-    'RepurchaseArbitrage',
-    #'LVDepositor',
-    'LoopingAgent'
-    ]
+    # ---------------- agents -----------------------------
+    if agents_override is not None:
+        agents = agents_override
+    else:
+        agents = [
+            _build_agent(name, token_name, agent_params.get(name, {}))
+            for name in agent_names
+        ]
+    chain.add_agents(*agents)
 
-# Create the blockchain
-chain = Blockchain(
-    num_blocks=NUM_BLOCKS,
-    initial_eth_balance=INITIAL_ETH_BALANCE,
-    psm_expiry_after_block=PSM_EXPIRY_AFTER_BLOCK,
-    initial_eth_yield_per_block=0.00001
-)
+    # ---------------- run simulation ---------------------
+    chain.start_mining()
 
-# Add the token with the specified AMM
-chain.add_token(
-    token=TOKEN_NAME,
-    risk=0.02,
-    initial_agent_balance=INITIAL_AGENT_TOKEN_BALANCE,
-    amm=UniswapV2AMM(
-        token_symbol=TOKEN_NAME,
-        reserve_eth=AMM_RESERVE_ETH,
-        reserve_token=AMM_RESERVE_TOKEN,
-        fee=AMM_FEE
-    ),
-    initial_yield_per_block=INITIAL_YIELD_PER_BLOCK
-)
-
-# Instantiate agents based on AGENT_NAMES
-agents = []
-for name in AGENT_NAMES:
-    #if name == 'LstMaximalist':
-    #    agents.append(LstMaximalist(TOKEN_NAME))
-    #elif name == 'Insurer':
-    #    agents.append(Insurer(TOKEN_NAME))
-    if name == 'DSShortTerm':
-        agents.append(DSShortTermAgent(name="DS Short Term", token_symbol=TOKEN_NAME, threshold=0.01))
-    elif name == 'CTShortTerm':
-        agents.append(CTShortTermAgent(name="CT Short Term", token_symbol=TOKEN_NAME, buying_pressure=10))
-    elif name == 'DSLongTerm':  
-        agents.append(DSLongTermAgent(name="DS Long Term", token_symbol=TOKEN_NAME, buying_pressure=1))
-    elif name == 'CTLongTerm':
-        agents.append(CTLongTermAgent(name="CT Long Term", token_symbol=TOKEN_NAME, percentage_threshold=0.01))
-    elif name == 'RedemptionArbitrage':
-        agents.append(RedemptionArbitrageAgent(name="Redemption Arb", token_symbol=TOKEN_NAME))
-    elif name == 'RepurchaseArbitrage':
-        agents.append(RepurchaseArbitrageAgent(name="Repurchase Arb", token_symbol=TOKEN_NAME))
-    elif name == 'LVDepositor':
-        agents.append(LVDepositorAgent(name="LV Depositor", token_symbol=TOKEN_NAME, expected_apy=0.05))
-    elif name == 'LoopingAgent':
-        agents.append(LoopingAgent(
-            name="Looping Agent", 
-            token_symbol=TOKEN_NAME,
-            initial_borrow_rate=0.001, 
-            borrow_rate_changes={}, 
-            max_ltv=0.7, 
-            lltv=0.915))
-
-# Add agents to the blockchain
-chain.add_agents(*agents)
+    # ---------------- results ----------------------------
+    return {
+        "agents_stats": chain.stats["agents"],
+        "tokens_stats": chain.stats["tokens"],
+        "vaults_stats": chain.stats["vaults"],
+        "amms_stats": chain.stats["amms"],
+        "borrowed_eth_stats": chain.stats["borrowed_eth"],
+        "borrowed_tokens_stats": chain.stats["borrowed_tokens"],
+        "all_trades": pd.DataFrame(chain.all_trades),
+        "final_block": num_blocks,
+    }
 
 
-# Start a simple mining process
-chain.start_mining()
-
-# Access stats dataframes
-agents_stats = chain.stats['agents']
-tokens_stats = chain.stats['tokens']
-vaults_stats = chain.stats['vaults']
-amms_stats = chain.stats['amms']
-borrowed_eth_stats = chain.stats['borrowed_eth']
-borrowed_tokens_stats = chain.stats['borrowed_tokens']
-
-
-agents = ['DS Short Term']
-all_trades = pd.DataFrame(chain.all_trades)
-print(all_trades.query("agent in @agents"))
-# we have several trades for DS Short Term agent (all Buying)
-
-ds_short_term = agents_stats.query("agent in @agents")["wallet_token_balances"].apply(pd.Series)
-print((ds_short_term["DS_stETH"] > 0.0).sum())
-# but the agent never holds any DS_stETH tokens
-
+# ------------------------------------------------------------------
+# CLI test
+# ------------------------------------------------------------------
+if __name__ == "__main__":
+    res = main()
+    print("Simulation completed.")
+    print(f"Trades executed: {len(res['all_trades'])}")

@@ -1,135 +1,112 @@
 import streamlit as st
-from simulator.blockchain import Blockchain
-from simulator.amm import UniswapV2AMM
-from agents.ds_speculation import DSShortTermAgent
-from agents.ct_speculation import CTShortTermAgent
-from agents.ds_long_term import DSLongTermAgent
-from agents.ct_long_term import CTLongTermAgent
-from agents.redemption_arbitrage import RedemptionArbitrageAgent
-from agents.repurchase_arbitrage import RepurchaseArbitrageAgent
-from agents.looping import LoopingAgent
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import numpy as np
+from main import main as run_sim           # existing function
+from agents import (                       # import agent classes
+    ds_speculation, ct_speculation, ds_long_term, ct_long_term,
+    looping, redemption_arbitrage, repurchase_arbitrage,
+    lst_maximalist, insurer, lv_depositor, ct_long_term
+)
 
-st.set_page_config(page_title="Cork Protocol Trading Engine", layout="wide")
+# ------- helper to build agent objects dynamically ----------
+def build_agent(name, params, token):
+    mapping = {
+        "DS Short Term": lambda p: ds_speculation.DSShortTermAgent(
+            name=name, token_symbol=token, threshold=p["threshold"]),
+        "CT Short Term": lambda p: ct_speculation.CTShortTermAgent(
+            name=name, token_symbol=token, buying_pressure=p["buying_pressure"]),
+        "DS Long Term":  lambda p: ds_long_term.DSLongTermAgent(
+            name=name, token_symbol=token, buying_pressure=p["buying_pressure"]),
+        "CT Long Term":  lambda p: ct_long_term.CTLongTermAgent(
+            name=name, token_symbol=token, percentage_threshold=p["pct_thr"]),
+        "Looping Agent": lambda p: looping.LoopingAgent(
+            name=name, token_symbol=token,
+            initial_borrow_rate=p["init_rate"],
+            borrow_rate_changes={}, max_ltv=p["max_ltv"]),
+        "Redemption Arb": lambda p: redemption_arbitrage.RedemptionArbitrageAgent(
+            name=name, token_symbol=token),
+        "Repurchase Arb": lambda p: repurchase_arbitrage.RepurchaseArbitrageAgent(
+            name=name, token_symbol=token),
+        "Lst Maximalist": lambda p: lst_maximalist.LstMaximalist(
+            name=name, token_symbol=token),
+        "Insurer": lambda p: insurer.Insurer(name=name, token_symbol=token),
+        "LV Depositor": lambda p: lv_depositor.LVDepositorAgent(
+            name=name, token_symbol=token)
+    }
+    return mapping[name](params)
 
-# Explicitly enforced Dark Mode & IBM Plex Mono Font
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap');
+# -------- Streamlit UI --------------------------------------
+st.set_page_config(page_title="Cork Simulator", layout="wide")
+st.title("🧮 Cork Protocol Trading Simulator")
 
-html, body, .stApp, .css-18e3th9, .css-1d391kg, .st-emotion-cache-18ni7ap {
-    font-family: 'IBM Plex Mono', monospace !important;
-    background-color: #0E1117 !important;
-    color: #FFFFFF !important;
-}
+# ---- Step 1 core ----
+with st.sidebar.expander("Step 1 · Core simulation", expanded=True):
+    num_blocks      = st.slider("Blocks to mine", 10, 10_000, 300)
+    init_eth        = st.number_input("Initial ETH balance", 1.0, value=100.0)
+    token_name      = st.text_input("TOKEN_NAME", "stETH")
+    events_file     = st.file_uploader("Custom events.json (optional)")
+    # NOTE: if uploaded, save to /tmp and pass path into run_sim later.
 
-section.main, .block-container {
-    background-color: #0E1117 !important;
-}
+# ---- Step 2 AMM ----
+with st.sidebar.expander("Step 2 · AMM parameters", expanded=False):
+    reserve_eth     = st.number_input("AMM reserve ETH", 1000.0, value=1_000_000.0)
+    reserve_token   = st.number_input("AMM reserve TOKEN", 1000.0, value=1_000_000.0)
+    amm_fee         = st.slider("AMM fee", 0.0, 0.1, 0.02)
 
-.css-1d391kg, .css-1y4p8pa, .stSidebar, .sidebar-content {
-    background-color: #161B22 !important;
-}
+# ---- Step 3 agents ----
+all_agent_names = ["DS Short Term","CT Short Term","DS Long Term",
+                   "CT Long Term","Looping Agent","Redemption Arb",
+                   "Repurchase Arb","Lst Maximalist","Insurer","LV Depositor"]
+chosen = st.sidebar.multiselect("Step 3 · Choose agents", all_agent_names,
+                                default=[n for n in all_agent_names if n!="Looping Agent"])
 
-button, .stButton>button {
-    background-color: #21262D !important;
-    color: #FFFFFF !important;
-    border: none !important;
-}
+# per-agent parameter forms
+agent_params = {}
+for name in chosen:
+    with st.sidebar.expander(f"{name} settings"):
+        if name == "DS Short Term":
+            agent_params[name] = {"threshold": st.number_input("threshold", 0.0, 0.5, 0.01)}
+        elif name == "CT Short Term":
+            agent_params[name] = {"buying_pressure": st.number_input("buying pressure", 1, 100, 10)}
+        elif name == "DS Long Term":
+            agent_params[name] = {"buying_pressure": st.number_input("buying pressure", 1, 10, 1)}
+        elif name == "CT Long Term":
+            agent_params[name] = {"pct_thr": st.number_input("% threshold", 0.0, 0.5, 0.01)}
+        elif name == "Looping Agent":
+            agent_params[name] = {
+                "init_rate": st.number_input("initial borrow rate", 0.0, 0.01, 0.001),
+                "max_ltv": st.slider("max LTV", 0.1, 0.9, 0.7)
+            }
+        else:
+            agent_params[name] = {}   # no tunables
 
-input, .stNumberInput input, .stTextInput input {
-    background-color: #21262D !important;
-    color: #FFFFFF !important;
-}
+# ---- Step 4 advanced ----
+with st.sidebar.expander("Step 4 · Advanced / Monte-Carlo", expanded=False):
+    n_sims = st.selectbox("How many simulations?", list(range(1, 11)), index=0)
+    eth_yield = st.number_input("initial_eth_yield_per_block", 0.0, 0.01, 0.00001, format="%.6f")
+    psm_expiry = st.number_input("PSM expiry block (0 = same as num_blocks)", 0, num_blocks, num_blocks)
 
-.stSlider div {
-    color: #FFFFFF !important;
-}
+run = st.sidebar.button("▶️  Run simulation")
 
-.stMarkdown, .dataframe, table, td, th {
-    color: #FFFFFF !important;
-}
-</style>
-""", unsafe_allow_html=True)
+# -------- run logic ----------
+if run:
+    # Build agent objects
+    agents = [build_agent(name, agent_params[name], token_name) for name in chosen]
 
-st.title("Cork Protocol Trading Engine")
+    # call original main() but pass the new config via keyword overrides
+    res = run_sim(
+        num_blocks=num_blocks,
+        initial_eth_balance=init_eth,
+        agents_override=agents,                 # <— you’ll add this kwarg in main.py
+        amm_kwargs=dict(
+            reserve_eth=reserve_eth,
+            reserve_token=reserve_token,
+            fee=amm_fee
+        ),
+        initial_eth_yield_per_block=eth_yield,
+        psm_expiry_after_block=psm_expiry or num_blocks,
+        events_path=None if events_file is None else "/tmp/upload.json"
+    )
 
-# Sidebar Parameters
-st.sidebar.header("Simulation Settings")
-num_blocks = st.sidebar.slider("Simulation Blocks", 100, 2000, 300, 50)
-initial_eth_balance = st.sidebar.number_input("Initial ETH Balance", 50.0, 10000.0, 5000.0, 50.0)
-amm_reserve = st.sidebar.number_input("AMM Initial Reserve", 1e6, 2e7, 1e7, 1e5)
-volatility = st.sidebar.slider("Volatility", 0.0, 1.0, 0.02, 0.01)
-yield_rate = st.sidebar.slider("Annual Yield (%)", 0.0, 20.0, 3.0, 0.1) / 365
-
-# Simulation Execution
-if st.sidebar.button("Run Simulation"):
-    with st.spinner('Simulating...'):
-        chain = Blockchain(
-            num_blocks=num_blocks,
-            initial_eth_balance=initial_eth_balance,
-            psm_expiry_after_block=num_blocks,
-            initial_eth_yield_per_block=yield_rate
-        )
-
-        chain.add_token(
-            token='stETH',
-            risk=volatility,
-            initial_agent_balance=100.0,
-            amm=UniswapV2AMM('stETH', amm_reserve, amm_reserve, 0.02),
-            initial_yield_per_block=yield_rate
-        )
-
-        agents = [
-            DSShortTermAgent("DS Short Term", "stETH", 0.01),
-            CTShortTermAgent("CT Short Term", "stETH", 10),
-            DSLongTermAgent("DS Long Term", "stETH", 1),
-            CTLongTermAgent("CT Long Term", "stETH", 0.01),
-            RedemptionArbitrageAgent("Redemption Arb", "stETH"),
-            RepurchaseArbitrageAgent("Repurchase Arb", "stETH"),
-            LoopingAgent("Looping Agent", "stETH", 0.001, {}, 0.7, 0.915)
-        ]
-
-        chain.add_agents(*agents)
-        chain.start_mining()
-
-        agents_stats = chain.stats['agents']
-        trades = pd.DataFrame(chain.all_trades)
-
-    wallet_df = agents_stats[['agent', 'wallet_face_value']].copy()
-    wallet_df.columns = ['Agent', 'Wallet Value (ETH)']
-
-    st.subheader("Agent Wallet Summary")
-    fig, ax = plt.subplots(figsize=(10, 5))
-    sns.barplot(data=wallet_df, y='Agent', x='Wallet Value (ETH)', palette="coolwarm_r", ax=ax)
-    ax.set_xlabel("Wallet Value (ETH)")
-    ax.set_ylabel("Agent")
-    st.pyplot(fig)
-    st.dataframe(wallet_df, use_container_width=True)
-
-    st.subheader("Trade Volumes")
-    trade_volumes = trades.groupby('agent')['volume'].sum().reset_index().rename(columns={'agent':'Agent', 'volume':'Total Volume'})
-    fig2, ax2 = plt.subplots(figsize=(10, 5))
-    sns.barplot(data=trade_volumes, y='Agent', x='Total Volume', palette="mako_r", ax=ax2)
-    ax2.set_xlabel("Total Volume")
-    ax2.set_ylabel("Agent")
-    st.pyplot(fig2)
-    st.dataframe(trade_volumes, use_container_width=True)
-
-    st.subheader("Predictive Price Simulation")
-    forecast_blocks = st.slider("Predictive Blocks", 50, 500, 100, 10)
-    predicted_prices = np.cumsum(np.random.normal(loc=0, scale=volatility, size=forecast_blocks)) + amm_reserve/1e6
-
-    fig3, ax3 = plt.subplots(figsize=(10, 4))
-    ax3.plot(range(forecast_blocks), predicted_prices, color="#58A6FF")
-    ax3.set_xlabel("Blocks Ahead")
-    ax3.set_ylabel("Predicted stETH Price (ETH)")
-    st.pyplot(fig3)
-
-    csv = trades.to_csv(index=False).encode('utf-8')
-    st.download_button("Download Trade Data", csv, "trades.csv", "text/csv")
-
-
+    st.success(f"Completed {res['final_block']} blocks · {len(res['all_trades'])} trades")
+    st.subheader("Trades"); st.dataframe(res["all_trades"])
+    st.subheader("Agent Stats"); st.dataframe(pd.DataFrame(res["agents_stats"]))
