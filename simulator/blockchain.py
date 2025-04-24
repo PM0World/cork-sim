@@ -24,9 +24,6 @@ class Blockchain:
 
     current_block = 0
 
-    # ──────────────────────────────────────────────────────────
-    # Constructor
-    # ──────────────────────────────────────────────────────────
     def __init__(
         self,
         num_blocks: int,
@@ -35,13 +32,11 @@ class Blockchain:
         initial_eth_yield_per_block: float = 0.0,
         events_path: Optional[str] = "events.json",
     ):
-        # -------- event manager --------
         if events_path is None:
-            self.event_manager = EventManager([])          # ← FIX: pass empty list
+            self.event_manager = EventManager([])
         else:
             self.event_manager = EventManager.from_json(events_path)
 
-        # -------- high-level config ----
         self.num_blocks = num_blocks
         self.initial_eth_balance = initial_eth_balance
         self.eth_yield_per_block = initial_eth_yield_per_block
@@ -51,19 +46,17 @@ class Blockchain:
         )
         self.psm_expiry_at_block = psm_expiry_after_block
 
-        # -------- dynamic state -------
-        self.tokens = {}                         # token_symbol → dict
-        self.agents = []                         # all agent objects
-        self.initial_eth_balance_overrides = {}  # per-agent overrides
+        self.tokens = {}
+        self.agents = []
+        self.initial_eth_balance_overrides = {}
 
-        self.actions: list[str] = []             # actions in current block
-        self.all_actions: list[list[str]] = []   # history of actions
-        self.all_trades: list[dict] = []         # structured trade log
+        self.actions: list[str] = []
+        self.all_actions: list[list[str]] = []
+        self.all_trades: list[dict] = []
 
         self.genesis_wallet = Wallet()
         self.genesis_wallet.set_initial_balances(1000)
 
-        # borrowing trackers
         self.borrowed_eth = {}
         self.total_borrowed_eth = 0.0
         self.borrowed_token = {}
@@ -72,7 +65,6 @@ class Blockchain:
         Blockchain.current_block = 0
         self.current_block = 0
 
-        # -------- metrics dataframes ---
         self.stats = {
             "agents": pd.DataFrame(
                 columns=[
@@ -109,6 +101,7 @@ class Blockchain:
                 columns=["block", "wallet", "token", "amount"]
             ),
         }
+
 
     # (everything below this point is unchanged – keep your existing
     #  _append_stats, add_token, borrow/repay, mining loop, etc.)
