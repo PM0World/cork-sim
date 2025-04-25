@@ -35,6 +35,15 @@ class CTShortTermAgent(Agent):
         self.buying_pressure = buying_pressure
         self.threshold = threshold
 
+        self.initial_eth_balance = None
+
+    def current_profit_eth(self):
+        current_balance_eth = self.wallet.eth_balance
+        if self.initial_eth_balance is None:
+            self.initial_eth_balance = current_balance_eth
+            return 0.0
+        return current_balance_eth - self.initial_eth_balance
+
     def adjust_parameters(self):
         profit = self.current_profit_eth()
 
