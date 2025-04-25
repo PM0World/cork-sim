@@ -7,18 +7,17 @@ from agents.utils.trigger_calculations import detect_sharp_decline, calculate_ar
 
 class CTShortTermAgent(Agent):
     """
-    Enhanced CTShortTermAgent
-
-    Speculates on short-term moves of CT relative to LST yields.
-    • Buys CT on sharp upward ARP trends  (= cheap DS, risk subsiding).
-    • Shorts CT on sharp downward ARP trends (= panic, DS expensive).
-
-    Enhancements:
-    • Historical state and profit tracking.
-    • Dynamic adjustment of buying_pressure based on historical profitability.
-    • Automatic CT borrowing and repayment logic preserved.
+    CT-Short Term desk with:
+    • Profit-adaptive buying_pressure   (your earlier enhancement)
+    • MIN_TRADE_ETH                     (skip dust trades)
+    • COOLDOWN_BLOCKS                   (1 trade every N blocks max)
+    • Auto-borrow + auto-repay CT
     """
 
+    MIN_TRADE_ETH   = 50.0      # skip if < 50 ETH notional
+    COOLDOWN_BLOCKS = 5         # trade no more than once / 5 blocks
+
+    # ------------------------------------------------------------------
     def __init__(
         self,
         token_symbol: str,
@@ -29,131 +28,130 @@ class CTShortTermAgent(Agent):
         super().__init__(name or f"CT Short Term for {token_symbol}")
 
         self.token_symbol = token_symbol
-        self.lst_symbol = token_symbol
+        self.lst_symbol   = token_symbol
         self.arp_history: list[float] = []
 
         self.buying_pressure = buying_pressure
-        self.threshold = threshold
+        self.threshold       = threshold
 
-        self.initial_eth_balance = None
+        self.initial_eth_balance: float | None = None
+        self._last_trade_block   = -9999   # for cool-down timing
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
     def current_profit_eth(self):
-        current_balance_eth = self.wallet.eth_balance
+        bal = self.wallet.eth_balance
         if self.initial_eth_balance is None:
-            self.initial_eth_balance = current_balance_eth
+            self.initial_eth_balance = bal
             return 0.0
-        return current_balance_eth - self.initial_eth_balance
+        return bal - self.initial_eth_balance
 
     def adjust_parameters(self):
         profit = self.current_profit_eth()
 
-        # Adjust buying pressure based on profitability
-        if profit > 0:
-            self.buying_pressure *= 1.1  # Increase aggressiveness by 10%
-        else:
-            self.buying_pressure *= 0.9  # Decrease aggressiveness by 10%
+        # ±10 % aggression tweak
+        self.buying_pressure *= 1.10 if profit > 0 else 0.90
+        self.buying_pressure  = min(max(self.buying_pressure, 0.1), 5.0)
 
-        # Clamp within sensible bounds
-        self.buying_pressure = min(max(self.buying_pressure, 0.1), 5.0)
-
-        # Log parameter adjustment
         self.log_action(
-            f"Adjusted buying pressure to {self.buying_pressure:.4f} based on profit of {profit:.4f} ETH"
+            f"Adj buying_pressure → {self.buying_pressure:.3f} (profit {profit:+.2f} ETH)"
         )
 
+    # ------------------------------------------------------------------
     def on_block_mined(self, block_number: int):
-        # Adjust parameters periodically every 100 blocks
-        if block_number % 100 == 0 and block_number > 0:
+        # --- periodic param re-tune -----------------------------------
+        if block_number and block_number % 100 == 0:
             self.adjust_parameters()
 
-        vault = self.blockchain.get_vault(self.token_symbol)
-        ct_price = vault.ct_eth_amm.price_of_one_token_in_eth()
-        ds_price = vault.ds_eth_amm.price_of_one_token_in_eth()
-        native_yield = self.blockchain.tokens[self.lst_symbol].get("yield_per_block", 0.0)
+        # --- cool-down guard ------------------------------------------
+        if block_number - self._last_trade_block < self.COOLDOWN_BLOCKS:
+            return
 
+        vault        = self.blockchain.get_vault(self.token_symbol)
+        ct_price     = vault.ct_eth_amm.price_of_one_token_in_eth()
+        ds_price     = vault.ds_eth_amm.price_of_one_token_in_eth()
+        native_yield = self.blockchain.tokens[self.lst_symbol].get(
+            "yield_per_block", 0.0
+        )
+
+        # ARP + slope
         arp = calculate_arp(
             ds_price, native_yield,
-            self.blockchain.num_blocks,
-            self.blockchain.current_block,
+            self.blockchain.num_blocks, self.blockchain.current_block,
         )
         self.arp_history.append(arp)
 
         if len(self.arp_history) >= 3:
             sharp_decline, sharp_incline, ewa_slope = detect_sharp_decline(
                 self.arp_history, n=10, alpha=0.3,
-                decline_threshold=-self.threshold, incline_threshold=self.threshold,
+                decline_threshold=-self.threshold,
+                incline_threshold= self.threshold,
             )
         else:
             sharp_decline = sharp_incline = False
-            ewa_slope = 0
+            ewa_slope     = 0
 
-        # ===== BUY CT on sharp incline ================================
+        # ===== BUY CT (cover) =========================================
         if sharp_incline:
-            notional_eth = self.buying_pressure * ewa_slope
+            notional_eth  = self.buying_pressure * ewa_slope
+            notional_eth  = max(notional_eth, 0.0)
+            if notional_eth < self.MIN_TRADE_ETH:
+                return
+
             volume_to_buy = min(notional_eth, self.wallet.eth_balance)
+            vault.ct_eth_amm.swap_eth_for_token(self.wallet, volume_to_buy)
+            self.log_action(f"Bought CT for {volume_to_buy:.1f} ETH")
 
-            if volume_to_buy > 0:
-                vault.ct_eth_amm.swap_eth_for_token(self.wallet, volume_to_buy)
-                self.log_action(f"Bought CT with {volume_to_buy:.4f} ETH")
-
-                borrowed = (
-                    self.blockchain.borrowed_token
-                    .get(self.wallet, {})
-                    .get(f"CT_{self.token_symbol}", 0.0)
+            # repay borrowed CT if any
+            borrowed = self.blockchain.borrowed_token.get(
+                self.wallet, {}
+            ).get(f"CT_{self.token_symbol}", 0.0)
+            repay = min(borrowed,
+                        self.wallet.token_balance(f"CT_{self.token_symbol}"))
+            if repay:
+                self.blockchain.repay_token(
+                    self.wallet, f"CT_{self.token_symbol}", repay
                 )
-                repay_amt = min(
-                    borrowed,
-                    self.wallet.token_balance(f"CT_{self.token_symbol}")
-                )
-                if repay_amt > 0:
-                    self.blockchain.repay_token(
-                        self.wallet, f"CT_{self.token_symbol}", repay_amt
-                    )
-                    self.log_action(f"Repaid {repay_amt:.4f} borrowed CT")
+                self.log_action(f"Repaid {repay:.1f} CT")
 
-                self.log_trade({
-                    "block": block_number,
-                    "agent": self.name,
-                    "token": "CT",
-                    "volume": volume_to_buy / ct_price,
-                    "action": "buy",
-                    "reason": "sharp INcline",
-                    "additional_info": {
-                        "arp": arp,
-                        "ewa_slope": ewa_slope,
-                        "arp_history": self.arp_history[-12:],
-                    },
-                })
+            self.log_trade({
+                "block":  block_number,
+                "agent":  self.name,
+                "token":  "CT",
+                "volume": volume_to_buy / ct_price,
+                "action": "buy",
+                "reason": "sharp INcline",
+            })
+            self._last_trade_block = block_number
+            return  # done for this block
 
-        # ===== SELL (short) CT on sharp decline =======================
+        # ===== SELL (short) CT ========================================
         if sharp_decline:
-            target_ct = max(
-                self.buying_pressure * (-ewa_slope) / ct_price, 0,
-            )
-            current_ct = self.wallet.token_balance(f"CT_{self.token_symbol}")
+            target_ct   = self.buying_pressure * (-ewa_slope) / ct_price
+            target_ct   = max(target_ct, 0.0)
+            notional_eth = target_ct * ct_price
+            if notional_eth < self.MIN_TRADE_ETH:
+                return
+
+            current_ct  = self.wallet.token_balance(f"CT_{self.token_symbol}")
             need_borrow = max(target_ct - current_ct, 0)
 
-            if need_borrow > 0:
+            if need_borrow:
                 self.blockchain.borrow_token(
                     self.wallet, f"CT_{self.token_symbol}", need_borrow
                 )
-                self.log_action(f"Borrowed {need_borrow:.4f} CT for short")
+                self.log_action(f"Borrowed {need_borrow:.1f} CT")
 
-            volume_to_sell = target_ct
-            if volume_to_sell > 0:
-                vault.ct_eth_amm.swap_token_for_eth(self.wallet, volume_to_sell)
-                self.log_action(f"Sold {volume_to_sell:.4f} CT")
+            vault.ct_eth_amm.swap_token_for_eth(self.wallet, target_ct)
+            self.log_action(f"Sold {target_ct:.1f} CT")
 
-                self.log_trade({
-                    "block": block_number,
-                    "agent": self.name,
-                    "token": "CT",
-                    "volume": volume_to_sell,
-                    "action": "sell",
-                    "reason": "sharp DEcline",
-                    "additional_info": {
-                        "arp": arp,
-                        "ewa_slope": ewa_slope,
-                        "arp_history": self.arp_history[-12:],
-                    },
-                })
+            self.log_trade({
+                "block":  block_number,
+                "agent":  self.name,
+                "token":  "CT",
+                "volume": target_ct,
+                "action": "sell",
+                "reason": "sharp DEcline",
+            })
+            self._last_trade_block = block_number
